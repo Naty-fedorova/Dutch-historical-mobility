@@ -185,7 +185,7 @@ dm_sim %>%
 
 # plotting
 png("Figures/beta_estimates.png", res = 300, height = 15, width = 20, units = "cm")
-plot(y = 0:90,
+plot(y = 0:(length(beta_mod)-1),
      x = 0:(length(beta_mod)-1), 
      ylim = c(0, 0.5),
      xlim = c(0,(length(beta_mod)-1)),
@@ -293,7 +293,7 @@ plot(exp(a_o[,"a_mod"] + mu_mod),
      font.main = 1,
      bty = "n", 
      ylim = c(0,3.5),
-     xlim = c(0, 40000),
+     xlim = c(0, 4000), #update to number of n_rp 
      type = "n")
 shade(exp(a_int + mu_mod), 1:length(a_mod), col = vir_int[16])
 points(sort(mean_moves_rp$average_moves_rp), col = "grey41", pch = 20)

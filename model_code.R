@@ -7,22 +7,23 @@ library(viridis)
 library(cmdstanr)
 
 # identify working dir
-work_dir <- "~/Documents/GitHub/Dutch-historical-mobility"
+work_dir <- getwd()
 
 # load in data for model
 # when working with real data:
-d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
+# d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 
 # when working with simulated data
-#d <- read.csv("s_person_year_sim.csv", stringsAsFactors = FALSE)
+d <- read.csv("s_person_year_sim.csv", stringsAsFactors = FALSE)
 
 # select subset
 set.seed(1)
 person_ids <- sort(unique(d$person_id))
-n_rp <- 10000
+# if selecting subset of rps
+#n_rp <- 10000
 
 # if wanting to work with entire set
-#n_rp <- length(person_ids) 
+n_rp <- length(person_ids) 
 
 rp_sub <- sample(person_ids, size = n_rp)
 dm <- subset(d, d$person_id %in% rp_sub)
