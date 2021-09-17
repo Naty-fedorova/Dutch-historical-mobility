@@ -4,26 +4,28 @@
 library(rethinking)
 library(rstan)
 library(viridis)
+library(cmdstanr)
 
-# create folder to contain plots
-dir.create("Figures")
+# identify working dir
+work_dir <- "~/Documents/GitHub/Dutch-historical-mobility"
 
 # load in data for model
 # when working with real data:
-# d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
+d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 
 # when working with simulated data
-d <- read.csv("s_person_year_sim.csv", stringsAsFactors = FALSE)
+#d <- read.csv("s_person_year_sim.csv", stringsAsFactors = FALSE)
 
 # select subset
 set.seed(1)
 person_ids <- sort(unique(d$person_id))
-n_rp <- 100
-# n_rp <- length(person_ids)    # if wanting to work with entire set
+n_rp <- 10000
+
+# if wanting to work with entire set
+#n_rp <- length(person_ids) 
+
 rp_sub <- sample(person_ids, size = n_rp)
-
 dm <- subset(d, d$person_id %in% rp_sub)
-
 person_ids <- sort(unique(dm$person_id))
 dm$person_id <- match(dm$person_id, person_ids)
 
@@ -45,7 +47,7 @@ data <- list(N_ages = length(age_list),
              d_mat = d_mat)
 
 # stan code for non-centered poisson model
-m_pois_gaus_nc_full <-
+m_pois <-
   "functions {
     matrix cov_GPL2(matrix x, real eta, real rho, real delta) {
       int N = dims(x)[1];
@@ -105,41 +107,32 @@ model {
   y ~ poisson_log(lambda);
 }"
 
-# compile
-m_nc_real_bin <- stan_model(model_code = m_pois_gaus_nc_full)
 
-# run model
-m_nc_real <- sampling(m_nc_real_bin,
-                      data = data,
-                      iter = 2e3, 
-                      chains = 1, 
-                      cores = 1, 
-                      control = list(adapt_delta = 0.8))
+# compile with cmndstanr
+stan_file <- write_stan_file(m_pois, dir = work_dir, basename = "model_file")
+m_pois_s <- cmdstan_model(stan_file)
+
+# run model with cmdstanr
+m_pois_fit <- m_pois_s$sample(
+  data = data,
+  chains = 4,
+  parallel_chains = 60,
+  output_dir = work_dir)
 
 
-# extract samples and save
-post <- extract.samples(m_nc_real) 
+# create stanfit object
+stanfit_pois <- rstan::read_stan_csv(m_pois_fit$output_files())
 
-# if wanting to save samples, uncomment line below
-# save(post, file = "samples_m_nc_real.RData")
+# the cmndstanr method
+post_pois <- extract.samples(stanfit_pois) 
 
-# plot for reporting model estimates
-png("Figures/model_estimates.png", res = 300, height = 10, width = 8, units = "cm")
-plot(precis(m_nc_real, pars = c("mu", "rho", "eta"), depth = 2), ylab = "Parameter")
-dev.off()
-
-# lambda
-lambda_mod <- apply(post$lambda, 2, mean)
-exp(mean(lambda_mod))
-HPDI(exp(lambda_mod))
-
-# beta estimates
-plot(precis(m_nc_real, depth = 2, pars = "beta"))
+# save post_pois
+save(post_pois, file = "post_pois.RData")
 
 #-----------------------------------------------------------------------------------------------------------------------
 
 # stan code for nc model with negative binomial (gamma) (to account for over-dispersion)
-m_negbin_gaus_nc_full <-
+m_negbin <-
   "functions {
     matrix cov_GPL2(matrix x, real eta, real rho, real delta) {
       int N = dims(x)[1];
@@ -174,6 +167,7 @@ parameters {
   real<lower=0> phi;
 }
 transformed parameters{
+  vector[N] lambda;
   vector[N_ages] beta;
   matrix[N_ages, N_ages] L_SIGMA;
   matrix[N_ages, N_ages] SIGMA;
@@ -190,7 +184,6 @@ transformed parameters{
   }
 }
 model {
-  vector[N] lambda;
   rho ~ gamma(2, 2);
   eta ~ normal(0, 1);
   mu ~ normal(0, 1);
@@ -201,71 +194,27 @@ model {
   y ~ neg_binomial_2(lambda, phi);
 }"
 
-# compile
-m_nc_negbin_s <- stan_model(model_code = m_negbin_gaus_nc_full)
 
-# run model
-m_nc_negbin <- sampling(m_nc_negbin_s,
-                      data = data,
-                      iter = 2e3, 
-                      chains = 1, 
-                      cores = 1, 
-                      control = list(adapt_delta = 0.8))
+# compile with cmndstanr
+stan_file_negbin <- write_stan_file(m_negbin, dir = work_dir, basename = "model_file_nc")
+m_negbin_s <- cmdstan_model(stan_file_negbin)
 
 
-# extract samples and save
-post_g <- extract.samples(m_nc_negbin) 
+# run model with cmdstanr
+m_negbin_fit <- m_negbin_s$sample(
+  data = data,
+  chains = 4,
+  parallel_chains = 60,
+  output_dir = work_dir)
 
-# plots for reporting gamma model
-png("Figures/negbin_estimates.png", res = 300, height = 10, width = 8, units = "cm")
-plot(precis(m_nc_negbin, pars = c("mu", "rho", "eta", "phi"), depth = 2), ylab = "Parameter")    # TODO add lambda to this list - model code should produce it....
-dev.off()
+# create stanfit object
+stanfit_negbin <- rstan::read_stan_csv(m_negbin_fit$output_files())
 
-# define colors for plotting
-vir <- viridis(20)
-vir_int <- viridis(20, alpha = 0.3)
+# extract samples
+post_negbin <- extract.samples(stanfit_negbin) 
 
-# betas
-beta_mod <- apply(post$beta, 2, mean)
-beta_mod_int <- apply(post$beta, 2, HPDI)
-mu_mod <- mean(post$mu)
-
-png("Figures/beta_estimates_negbin.png", res = 300, height = 15, width = 25, units = "cm")
-par(mar = c(5.1,4.1,4.1,0.5))
-plot(y = exp(beta_mod + mu_mod), 
-     x = 0:(length(beta_mod)-1), 
-     ylim = c(0, 0.6),
-     xlim = c(0,(length(beta_mod)-1)),
-     xlab = "Age", 
-     pch = 19, 
-     ylab = "Estimated number of moves per year", 
-     col = vir[7], 
-     main = "Gamma-poisson model estimate of number of moves per year per age", 
-     font.main = 1,
-     bty = "n")
-shade(exp(beta_mod_int + mu_mod), 0:(length(beta_mod)-1), col = vir_int[1])
-dev.off()
-
-# alphas
-a_mod <- apply(post$a, 2, mean)
-a_mod_int <- apply(post$a, 2, HPDI)
-
-a <- t(rbind(a_mod_int, a_mod))
-a_o <- a[order(a[,"a_mod"]), ]
-a_int <- t(a_o[,1:2])
-
-png("Figures/a_est_negbin.png", res = 300, height = 15, width = 20, units = "cm")
-plot(exp(a_o[,"a_mod"] + mu_mod), 
-     xlab = "RP index", 
-     ylab = "Moves per year", 
-     main = "Individual variation in moves per year", 
-     font.main = 1,
-     col = vir[7],
-     bty = "n", 
-     ylim = c(0,2))
-shade(exp(a_int + mu_mod), 1:length(a_mod), col = vir_int[1])
-dev.off()
-
+# save post_negbin
+save(post_negbin, file = "post_negbin.RData")
 
 #-----------------------------------------------------------------------------------------------------------------------
 
@@ -279,9 +228,9 @@ for(i in 1:length(cohorts)){
   b_seq <- seq(from = cohorts[i], to = cohorts[i], by = 1)
   d_coh <- d[which(d$b_y %in% b_seq), ]
   
-  set.seed(1)
+  #set.seed(1)
   person_ids <- sort(unique(d_coh$person_id))
-  n_rp <- 100
+  n_rp <- length(person_ids)
   rp_sub <- sample(person_ids, size = n_rp)
   
   dm <- subset(d, d$person_id %in% rp_sub)
@@ -305,16 +254,16 @@ for(i in 1:length(cohorts)){
   
   
   # run model
-  m_nc_coh <- sampling(m_nc_real_bin,
+  m_pois_coh <- sampling(m_pois_s,
                        data = data,
-                       iter = 2e3, 
-                       chains = 1, 
-                       cores = 1, 
+                       iter = 1000, 
+                       chains = 4, 
+                       cores = 60, 
                        control = list(adapt_delta = 0.8))
   
   
-  m_output_list[i] <- list(m_nc_coh)
-  m_coh_samples[i] <- list(extract.samples(m_nc_coh))
+  m_output_list[i] <- list(m_pois_coh)
+  m_coh_samples[i] <- list(extract.samples(m_pois_coh))
   
 }
 
