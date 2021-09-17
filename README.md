@@ -3,7 +3,7 @@ Dutch-historical-mobility
 
 [![License: CC BY-NC-SA 4.0](https://licensebuttons.net/l/by-nc-sa/4.0/80x15.png)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
-Analysis script for "The complex life course of mobility: Quantitative description of 60,000 residential moves in 1850-1950 Netherlands", by Natalia Fedorova, Richard McElreath, Bret Beheim
+Analysis script for "The complex life course of mobility: Quantitative description of 300,000 residential moves in 1850-1950 Netherlands", by Natalia Fedorova, Richard McElreath, Bret Beheim
 DOI: 
 
 # Requirements
