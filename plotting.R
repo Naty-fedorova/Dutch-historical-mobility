@@ -53,7 +53,7 @@ png("Figures/hist_s_total_moves.png", res = 300, height = 15, width = 20, units 
 # plot with -1 to correct nmove from listing order of registration to representing moves
 plot(table(ss_total_moves$total_moves -1),
      main = "Total number of moves recorded over lifetime",
-     xlab = "Total number of moves",
+     xlab = "Lifetime number of moves",
      ylab = "Number of RPs",
      xlim = c(0,131),
      xaxt = "n",

@@ -1,17 +1,12 @@
-# model code
-
 # dependencies
 library(rethinking)
 library(rstan)
 library(viridis)
 library(cmdstanr)
 
-# identify working dir
-work_dir <- getwd()
-
 # load in data for model
 # when working with real data:
-# d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
+d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 
 # when working with simulated data
 d <- read.csv("s_person_year_sim.csv", stringsAsFactors = FALSE)
@@ -20,7 +15,7 @@ d <- read.csv("s_person_year_sim.csv", stringsAsFactors = FALSE)
 set.seed(1)
 person_ids <- sort(unique(d$person_id))
 # if selecting subset of rps
-#n_rp <- 10000
+n_rp <- 1000
 
 # if wanting to work with entire set
 n_rp <- length(person_ids) 
@@ -47,84 +42,14 @@ data <- list(N_ages = length(age_list),
              person_id = dm$person_id,
              d_mat = d_mat)
 
-# stan code for non-centered poisson model
-m_pois <-
-  "functions {
-    matrix cov_GPL2(matrix x, real eta, real rho, real delta) {
-      int N = dims(x)[1];
-      matrix[N, N] K;
-      for (i in 1:(N-1)) {
-        K[i, i] = eta + delta;
-        for (j in (i + 1):N) {
-          K[i, j] = eta * exp(-rho * square(x[i,j]) );
-          K[j, i] = K[i, j];
-        }
-      }
-      K[N, N] = eta + delta;
-      return K;
-    }
-  }
-data {
-  int N_ages;
-  int N_ind;
-  int N;
-  int y[N];
-  int age[N];
-  int person_id[N];
-  matrix[N_ages, N_ages] d_mat;
-}
-parameters {
-  vector[N_ages] z;
-  vector[N_ind] z_id;
-  real mu;
-  real<lower=0> sd_id;
-  real<lower=0> eta;
-  real<lower=0> rho;
-}
-transformed parameters{
-  vector[N_ages] beta;
-  vector[N] lambda;
-  matrix[N_ages, N_ages] L_SIGMA;
-  matrix[N_ages, N_ages] SIGMA;
-  vector[N_ind] a = sd_id * z_id;
-  // Calculate the covariance for the GP
-  SIGMA = cov_GPL2(d_mat, eta, rho, 0.01);
-  // cholesky factor of a covariance
-  L_SIGMA = cholesky_decompose(SIGMA);
-  // covariance matrix = Cholesky covariance factor * z_scores
-  beta = L_SIGMA * z;
-    // Compute lambda
-    for (i in 1:N) {
-    lambda[i] = mu + a[person_id[i]] + beta[age[i]];
-    }
-}
-model {
-  rho ~ gamma(2, 2);
-  eta ~ normal(0, 1);
-  mu ~ normal(0, 1);
-  z ~ normal(0, 1);
-  z_id ~ normal(0, 1);
-  sd_id ~ normal(0, 1);
-  y ~ poisson_log(lambda);
-}"
+# fit poisson
+stanfit_pois <- cstan(file = "m_pois.stan", 
+                      data = data,
+                      chains = 4, 
+                      cores = 60, 
+                      control = list(adapt_delta = 0.8))
 
-
-# compile with cmndstanr
-stan_file <- write_stan_file(m_pois, dir = work_dir, basename = "model_file")
-m_pois_s <- cmdstan_model(stan_file)
-
-# run model with cmdstanr
-m_pois_fit <- m_pois_s$sample(
-  data = data,
-  chains = 4,
-  parallel_chains = 60,
-  output_dir = work_dir)
-
-
-# create stanfit object
-stanfit_pois <- rstan::read_stan_csv(m_pois_fit$output_files())
-
-# the cmndstanr method
+# extract samples 
 post_pois <- extract.samples(stanfit_pois) 
 
 # save post_pois
@@ -132,84 +57,13 @@ save(post_pois, file = "post_pois.RData")
 
 #-----------------------------------------------------------------------------------------------------------------------
 
-# stan code for nc model with negative binomial (gamma) (to account for over-dispersion)
-m_negbin <-
-  "functions {
-    matrix cov_GPL2(matrix x, real eta, real rho, real delta) {
-      int N = dims(x)[1];
-      matrix[N, N] K;
-      for (i in 1:(N-1)) {
-        K[i, i] = eta + delta;
-        for (j in (i + 1):N) {
-          K[i, j] = eta * exp(-rho * square(x[i,j]) );
-          K[j, i] = K[i, j];
-        }
-      }
-      K[N, N] = eta + delta;
-      return K;
-    }
-  }
-data {
-  int N_ages;
-  int N_ind;
-  int N;
-  int y[N];
-  int age[N];
-  int person_id[N];
-  matrix[N_ages, N_ages] d_mat;
-}
-parameters {
-  vector[N_ages] z;
-  vector[N_ind] z_id;
-  real mu;
-  real<lower=0> sd_id;
-  real<lower=0> eta;
-  real<lower=0> rho;
-  real<lower=0> phi;
-}
-transformed parameters{
-  vector[N] lambda;
-  vector[N_ages] beta;
-  matrix[N_ages, N_ages] L_SIGMA;
-  matrix[N_ages, N_ages] SIGMA;
-  vector[N_ind] a = sd_id * z_id;
-  // Calculate the covariance for the GP
-  SIGMA = cov_GPL2(d_mat, eta, rho, 0.01);
-  // cholesky factor of a covariance
-  L_SIGMA = cholesky_decompose(SIGMA);
-  // covariance matrix = Cholesky covariance factor * z_scores
-  beta = L_SIGMA * z;
-    // Compute lambda
-  for (i in 1:N) {
-    lambda[i] = exp(mu + a[person_id[i]] + beta[age[i]]);
-  }
-}
-model {
-  rho ~ gamma(2, 2);
-  eta ~ normal(0, 1);
-  mu ~ normal(0, 1);
-  z ~ normal(0, 1);
-  z_id ~ normal(0, 1);
-  sd_id ~ normal(0, 1);
-  phi ~ exponential(1);
-  y ~ neg_binomial_2(lambda, phi);
-}"
+# Fit negative binomial (gamma) (to account for over-dispersion)
 
-
-# compile with cmndstanr
-stan_file_negbin <- write_stan_file(m_negbin, dir = work_dir, basename = "model_file_nc")
-m_negbin_s <- cmdstan_model(stan_file_negbin)
-
-
-# run model with cmdstanr
-m_negbin_fit <- m_negbin_s$sample(
-  data = data,
-  chains = 4,
-  parallel_chains = 60,
-  output_dir = work_dir)
-
-# create stanfit object
-stanfit_negbin <- rstan::read_stan_csv(m_negbin_fit$output_files())
+stanfit_negbin <- cstan(file = "m_negbin.stan", 
+                        data = data, 
+                        chains = 4, 
+                        cores = 60, 
+                        control = list(adapt_delta = 0.8))
 
 # extract samples
 post_negbin <- extract.samples(stanfit_negbin) 
@@ -255,12 +109,11 @@ for(i in 1:length(cohorts)){
   
   
   # run model
-  m_pois_coh <- sampling(m_pois_s,
-                       data = data,
-                       iter = 1000, 
-                       chains = 4, 
-                       cores = 60, 
-                       control = list(adapt_delta = 0.8))
+  m_pois_coh <- cstan(file = "m_pois.stan", 
+                      data = data, 
+                      chains = 4, 
+                      cores = 60, 
+                      control = list(adapt_delta = 0.8))
   
   
   m_output_list[i] <- list(m_pois_coh)
