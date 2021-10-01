@@ -1,7 +1,6 @@
 *.csv
 *.png
 *.RData
-*.stan
 *.Rhistory
 *.DS_Store
 *Rapp.history
