@@ -7,10 +7,29 @@ library(parallel)
 
 # load in data for model
 # when working with real data:
-d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
+# d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 
-# when working with simulated data
-d <- read.csv("s_person_year_sim.csv", stringsAsFactors = FALSE)
+m_pois <- cmdstan_model("stan/m_pois.stan")
+
+d_pois_sim <- m_pois$sample(
+  data = data,
+  chains = 1,
+  iter_sampling = 2,
+  fixed_param = TRUE)
+
+stansim_pois <- rstan::read_stan_csv(d_pois_sim$output_files())
+dat_pois <- extract.samples(stansim_pois)
+
+length(dat_pois$y_sim[1,])
+
+data <- list(N_ages = length(age_list),
+             N_ind = length(person_ids),
+             N = nrow(dm), 
+             y = dat_pois$y_sim[1,], # pass a simulation as input into the stats model
+             age = dm$age_bin,
+             person_id = dm$person_id,
+             d_mat = d_mat,
+             run_estimation = 1)
 
 # select subset
 set.seed(1)
