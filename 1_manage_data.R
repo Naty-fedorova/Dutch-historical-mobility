@@ -274,43 +274,17 @@ ind <- sample((unique(age_errors$person_id)), 10, replace = FALSE)
 # for individuals lacking a reg event at age 0, we coerce prior age_error move to age 0
 # where there are several age_error events in the same year, we coerce all those reg events to age 0
 
-w_df$to_remove <- FALSE
+age_start_first_residence <- tapply(w_df$age_at_move, w_df$person_id, min)
+neg_max_age_first_residence <- tapply(w_df$age_at_move, w_df$person_id, function(z) z[max(which(z <= 0))])
+# this gives warnings b/c its NA for anyone who *doesn't* have an age at first residence
 
-for(i in 1:length(unique(w_df$person_id))){
-  
-  # subset to rp
-  ids <- unique(w_df$person_id)
-  
-  #w_df[which(w_df$person_id == ids[i]),]
-  
-  # does the rp have error reg events?
-  if(sum(w_df$age_at_move[which(w_df$person_id == ids[i])] < 0) > 0 ){
-    
-    # does rp have a reg event at age 0
-    if (sum(w_df$age_at_move[which(w_df$person_id == ids[i])] == 0) > 0 ){
-      
-      # then remove tag all error reg events 
-      w_df$to_remove[which((w_df$person_id == ids[i]) & (w_df$age_at_move <0))] <- TRUE
-      
-      # if they don't have a reg event at age 0
-    } else{
-      
-      # coerce reg event(s) closest to birth y (happening in one year) to birth y
-      # the implication is that we know where rp was at birth given the reg events of the hh of birth
-      
-      ages <- w_df$age_at_move[which(w_df$person_id == ids[i])]
-      ages <- ages[which(ages < 0)]
-      target <- max(ages)
-      
-      # account for the possibility of multiple target age reg events
-      w_df$address_start_y[which((w_df$person_id == ids[i]) & (w_df$age_at_move == target))] <- w_df$birth_y[which((w_df$person_id == ids[i]) & (w_df$age_at_move == target))]
-      
-      # remove tag all prior error moves
-      w_df$to_remove[which((w_df$person_id == ids[i]) & (w_df$age_at_move < target))] <- TRUE
-      
-    }
-  }
-}
+age_start_first_residence[which(!is.na(neg_max_age_first_residence))] <- neg_max_age_first_residence[which(!is.na(neg_max_age_first_residence))]
+
+# now the operation can be done using vectors
+w_df$to_remove <- w_df$age_at_move < age_start_first_residence[w_df$person_id]
+targets <- which(w_df$age_at_move == age_start_first_residence[w_df$person_id] & w_df$age_at_move < 0)
+w_df$address_start_y[targets] <- w_df$birth_y[targets]
+w_df$age_at_move[targets] <- 0
 
 
 # remove error terms
