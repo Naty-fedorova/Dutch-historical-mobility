@@ -3,6 +3,7 @@ library(rethinking)
 library(rstan)
 library(viridis)
 library(cmdstanr)
+library(parallel)
 
 # load in data for model
 # when working with real data:
@@ -74,25 +75,23 @@ save(post_negbin, file = "post_negbin.RData")
 #-----------------------------------------------------------------------------------------------------------------------
 
 # cohort model
-cohorts <- seq(from = 1860, to = 1910, by = 1)
-m_output_list <- as.list(cohorts)
-m_coh_samples <- as.list(cohorts)
 
-for(i in 1:length(cohorts)){
-  
-  b_seq <- seq(from = cohorts[i], to = cohorts[i], by = 1)
-  d_coh <- d[which(d$b_y %in% b_seq), ]
-  
-  #set.seed(1)
-  person_ids <- sort(unique(d_coh$person_id))
+cohorts <- seq(from = 1860, to = 1910, by = 1)
+cohorts <- c(1860, 1870, 1900)
+
+d_split <- split(d, d$b_y)
+d_split <- d_split[as.character(cohorts)]
+
+m_pois_rstan <- stan_model("stan/m_pois.stan")
+
+m_output_list <- mclapply(d_split, function(dm) {
+
+  person_ids <- sort(unique(dm$person_id))
   n_rp <- length(person_ids)
   rp_sub <- sample(person_ids, size = n_rp)
   
-  dm <- subset(d, d$person_id %in% rp_sub)
-  
-  person_ids <- sort(unique(dm$person_id))
   dm$person_id <- match(dm$person_id, person_ids)
-  
+
   age_list <- sort(unique(dm$age))
   
   dm$age_bin <- dm$age + 1
@@ -114,10 +113,10 @@ for(i in 1:length(cohorts)){
                       chains = 4, 
                       cores = 60, 
                       control = list(adapt_delta = 0.8))
-  
-  
-  m_output_list[i] <- list(m_pois_coh)
-  m_coh_samples[i] <- list(extract.samples(m_pois_coh))
-  
-}
+
+  return(m_pois_coh)
+
+}, num_cores = 3)
+
+m_coh_samples <- lapply(m_output_list, extract.samples)
 
