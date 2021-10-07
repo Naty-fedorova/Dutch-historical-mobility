@@ -18,7 +18,7 @@ d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 s <- read.csv(file = "w_s.csv", stringsAsFactors = FALSE)
 
 # when working with simulated data
-d <- read.csv("s_person_year_sim.csv", stringsAsFactors = FALSE)
+# d <- read.csv("s_person_year_sim.csv", stringsAsFactors = FALSE)
 
 # load in samples if necessary
 # load("post_pois.RData")
