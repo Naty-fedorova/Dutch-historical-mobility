@@ -24,6 +24,7 @@ d$n_moves <- (-999) # this is what we want to sim!
 
 person_ids <- sort(unique(d$person_id))
 
+
 age_list <- sort(unique(d$age))
 
 # re-index age for model; real age 0 (last birthday) is now age_bin[1]
@@ -84,6 +85,11 @@ dm$age_bin <- dm$age + 1
 # distance matrix for ages
 d_mat <- as.matrix(dist(age_list, upper = TRUE, diag = TRUE))
 
+
+# normalize distance matrix
+#d_mat <- (d_mat - min(d_mat))/(max(d_mat) - min(d_mat)) 
+
+# data list
 data <- list(N_ages = length(age_list),
              N_ind = length(person_ids),
              N = nrow(dm), 
@@ -96,6 +102,7 @@ data <- list(N_ages = length(age_list),
 # fit poisson
 stanfit_pois <- cstan(file = "m_pois.stan", 
                       data = data,
+                      seed = 101,
                       chains = 4, 
                       cores = 60, 
                       control = list(adapt_delta = 0.8))

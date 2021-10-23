@@ -34,7 +34,7 @@ parameters {
 transformed parameters{
   vector[N_ages] beta;
   vector[N] lambda;
-  vector[N_ind] a = sd_id * z_id;
+  vector[N_ind] a;
   {
     matrix[N_ages, N_ages] L_SIGMA;
     matrix[N_ages, N_ages] SIGMA;
@@ -44,6 +44,7 @@ transformed parameters{
     L_SIGMA = cholesky_decompose(SIGMA);
     // covariance matrix = Cholesky covariance factor * z_scores
     beta = L_SIGMA * z;
+    a = sd_id * z_id;
     // Compute lambda
     for (i in 1:N) {
       lambda[i] = mu + a[person_id[i]] + beta[age[i]];
@@ -51,8 +52,8 @@ transformed parameters{
   }
 }
 model {
-  rho ~ gamma(2, 2);
-  eta ~ normal(0, 1);
+  rho ~ normal(3, 3);
+  eta ~ exponential(1);
   mu ~ normal(0, 1);
   z ~ normal(0, 1);
   z_id ~ normal(0, 1);
