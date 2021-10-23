@@ -1,5 +1,6 @@
 # code for raw data cleaning and checks, and preparation of working data to be used in analyses
 
+
 # dependencies
 library(foreign)
 library(viridis)
@@ -176,7 +177,7 @@ write.csv(w_hh, file ="Working_data_hh.csv")
 write.csv(w_ha, file ="Working_data_ha.csv")
 
 
-## data cleaning and creation of datasets for analysis
+
 
 # address data
 
@@ -199,43 +200,19 @@ w_rp <- w_rp[ , c("person_id", "birth_y", "obsr_y", "death_y", "obsr_end_y", "se
 expect_true(nrow(w_rp) == 37173)
 expect_true(!any(duplicated(w_rp$person_id)))
 
-# differential representation of birth_years
-hist(w_rp$birth_y)
-
 # birth y occuring after death y 
 invalid_rps <- w_rp$person_id[which(w_rp$birth_y > w_rp$death_y)]
 expect_true(length(invalid_rps) == 10)
 
 # these individuals most likely represent errors in rounding and are removed
 w_rp <- subset(w_rp, !w_rp$person_id %in% invalid_rps)
-
 expect_true(nrow(w_rp) == 37163)
-
 w_ha <- subset(w_ha, !w_ha$person_id %in% invalid_rps)
-
 expect_true(nrow(w_ha) == 338679)
 
 # unique rp ids
 # check these against rp list
 expect_true(all(w_ha$person_id %in% w_rp$person_id))
-
-# address data checks
-
-# test function for whether the values in columns make sense
-test <- function(column){
-  na_values <- sum(is.na(column))
-  zero_values <- sum(column == 0)
-  unique_values <- unique(column)
-  return(list(na_values, zero_values, unique_values))
-}
-
-# test each column in w_ha
-lapply(w_ha[ ,1:ncol(w_ha)], test)
-
-# check the weird ones from start year, end year, and municipality
-w_ha[which(w_ha$address_start_y == 0),] # 1
-w_ha[which(w_ha$address_end_y == 0),] # so one id is missing both start and end year
-w_ha[which(is.na(w_ha$municipality)),] # missing municipality data on 3 reg events
 
 # merge
 # create w_df set
@@ -246,12 +223,7 @@ expect_true(nrow(w_df) == 338679)
 
 # order moved by year and month, with each person_id
 w_df <- w_df[with(w_df, order(person_id, address_start_y, address_start_m)), ]
-
 w_df$age_at_move <- w_df$address_start_y - w_df$birth_y
-
-# ISSUE
-# there is a high percentage of moves logged as occurring before the birth date of the rp
-table(w_df$age_at_move)
 
 # the two moves at -1868 represent an address start year of 0 - i.e. missing data
 age_errors <- w_df[which(w_df$age_at_move < 0 ),]
@@ -260,57 +232,17 @@ age_errors <- w_df[which(w_df$age_at_move < 0 ),]
 expect_true(length(unique(age_errors$person_id)) == 29174)  # n of rps with suspicious ages
 expect_true(nrow(age_errors) == 43738)    # n of suspicious cases
 
-# taking a closer look at 10 random individuals
-set.seed(1)
-ind <- sample((unique(age_errors$person_id)), 10, replace = FALSE)
-# ind :  "pijy7" "voife" "e8ajl" "xrqma" "lrpu1" "x7hex" "zyq6f" "je3c2" "hj07x" "dlw2u"
+age_start_first_residence <- tapply(w_df$age_at_move, w_df$person_id, min)
+neg_max_age_first_residence <- tapply(w_df$age_at_move, w_df$person_id, function(z) z[max(which(z <= 0))])
+# this gives warnings b/c its NA for anyone who *doesn't* have an age at first residence
 
-# from this sample we can see that problematic registrations logs are always with the same household and in the same municipality as the first "correct" log 
-# there doesn't seem to be anything systematic in terms of birth dates, municipalities, or reg dates
-# it seems, also given that w_ha is constructed around household level population registrars, that the issue is that household mobility prior to rp birth is imported into rps mobility history
+age_start_first_residence[which(!is.na(neg_max_age_first_residence))] <- neg_max_age_first_residence[which(!is.na(neg_max_age_first_residence))]
 
-# we deal with these errors as follows:
-# for individuals with a reg event at age 0, we remove all prior moves
-# for individuals lacking a reg event at age 0, we coerce prior age_error move to age 0
-# where there are several age_error events in the same year, we coerce all those reg events to age 0
-
-w_df$to_remove <- FALSE
-
-for(i in 1:length(unique(w_df$person_id))){
-  
-  # subset to rp
-  ids <- unique(w_df$person_id)
-  
-  #w_df[which(w_df$person_id == ids[i]),]
-  
-  # does the rp have error reg events?
-  if(sum(w_df$age_at_move[which(w_df$person_id == ids[i])] < 0) > 0 ){
-    
-    # does rp have a reg event at age 0
-    if (sum(w_df$age_at_move[which(w_df$person_id == ids[i])] == 0) > 0 ){
-      
-      # then remove tag all error reg events 
-      w_df$to_remove[which((w_df$person_id == ids[i]) & (w_df$age_at_move <0))] <- TRUE
-      
-      # if they don't have a reg event at age 0
-    } else{
-      
-      # coerce reg event(s) closest to birth y (happening in one year) to birth y
-      # the implication is that we know where rp was at birth given the reg events of the hh of birth
-      
-      ages <- w_df$age_at_move[which(w_df$person_id == ids[i])]
-      ages <- ages[which(ages < 0)]
-      target <- max(ages)
-      
-      # account for the possibility of multiple target age reg events
-      w_df$address_start_y[which((w_df$person_id == ids[i]) & (w_df$age_at_move == target))] <- w_df$birth_y[which((w_df$person_id == ids[i]) & (w_df$age_at_move == target))]
-      
-      # remove tag all prior error moves
-      w_df$to_remove[which((w_df$person_id == ids[i]) & (w_df$age_at_move < target))] <- TRUE
-      
-    }
-  }
-}
+# create a `to_remove` flag for entries that occur before birth in the first residence
+w_df$to_remove <- w_df$age_at_move < age_start_first_residence[w_df$person_id]
+targets <- which(w_df$age_at_move == age_start_first_residence[w_df$person_id] & w_df$age_at_move < 0)
+w_df$address_start_y[targets] <- w_df$birth_y[targets]
+w_df$age_at_move[targets] <- 0
 
 
 # remove error terms
@@ -323,12 +255,10 @@ expect_true(nrow(w_df[which(w_df$age_at_move < 0 ),]) == 0)
 expect_true(nrow(w_df) == 320933)
 
 # given this messes up the move order, we need to reorder again
-
 # order moved by year and month, with each person_id
 w_df <- w_df[with(w_df, order(person_id, address_start_y, address_start_m)), ]
 
 # we also check the presence of reg events after death or end of obsr period
-
 end_errors <- w_df[which((w_df$address_start_y > w_df$death_y) | (w_df$address_start_y > w_df$obsr_end_y) ),]
 
 expect_true(nrow(end_errors) == 11882)
@@ -360,7 +290,7 @@ for(i in 1:nrow(w_df)){
     prev_rolling_count <- 1
     w_df$nmove[i] <- prev_rolling_count
   }
-  if (i %% 100 == 0) print(i)
+  if (i %% 1000 == 0) print(i)
 }
 
 
@@ -408,9 +338,9 @@ for(i in 1:nrow(w_df)){
       } 
     }
   }
+  if (i %% 1000 == 0) print(i)
 }
 
-table(w_df$mun_move_category)
 
 # we can now save w_df as the set that can be used for models
 write.csv(w_df, file = "w_df.csv", row.names = FALSE)
@@ -451,39 +381,4 @@ expect_true(length(unique(s_person_year$person_id)) == 36595)
 expect_true(length(unique(s_person_year$person_id)) == length(unique(df$person_id)))
 
 # save person year table for use in model
-write.csv(s_person_year, "s_person_year_df.csv")
-
-## creating a pure lifecourse set
-
-# remove RPs whose first registered address does not match the year of birth
-
-s <- w_df[which((w_df$nmove == 1) & (w_df$address_start_y == w_df$birth_y)), ] 
-s <- subset(w_df, w_df$person_id %in% s$person_id)
-
-expect_true(nrow(s) == 285286)
-expect_true(length(unique(s$person_id)) == 33820)
-
-# s now contains the registration events for length(unique(s$person_id)) RPS, who are tracked from the birth year onwards
-
-# because many death years are missing and there is a lot of variation between individuals with death years and without them, we consider only individuals with both birth and death years here
-
-# rps with death year
-temp_s <- subset(s, s$death_y != "NA")
-
-# rps without death y 
-temp_ss <- s[is.na(s$death_y),]
-
-# compare distribution of death and obsvr end years
-par(mfrow=c(2,1), mar = c(4, 4, 2, 2) )
-
-plot(table(temp_s$death_y - temp_s$birth_y), ylab = "death y present")  # note! 33 cases where death year is before birth year - these will need to be removed
-plot(table(temp_ss$obsr_end_y - temp_ss$birth_y), ylab = "death y missing")
-
-# remove rps without death year
-s <- s[which(!is.na(s$death_y)),]
-
-expect_true(sum(is.na(s$death_y)) == 0)
-
-# save s, the lifecourse set 
-write.csv(s, "w_s.csv")
-
+write.csv(s_person_year, "s_person_year_df.csv", row.names = FALSE)

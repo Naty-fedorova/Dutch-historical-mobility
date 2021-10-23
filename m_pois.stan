@@ -21,6 +21,7 @@ data {
   int age[N];
   int person_id[N];
   matrix[N_ages, N_ages] d_mat;
+  int<lower=0, upper=1> run_estimation;
 }
 parameters {
   vector[N_ages] z;
@@ -56,5 +57,10 @@ model {
   z ~ normal(0, 1);
   z_id ~ normal(0, 1);
   sd_id ~ normal(0, 1);
-  y ~ poisson_log(lambda);
+  if (run_estimation == 1){
+    y ~ poisson_log(lambda);
+  }
+}
+generated quantities {
+  int<lower = 0> y_sim[N] = poisson_log_rng(lambda);
 }
