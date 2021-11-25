@@ -49,9 +49,9 @@ transformed parameters{
   }
 }
 model {
-  rho ~ gamma(2, 2);
-  eta ~ normal(0, 1);
-  mu ~ normal(0, 1);
+  rho ~ normal(3, 3);
+  eta ~ exponential(1);
+  mu ~ normal(0, 0.05);
   z ~ normal(0, 1);
   z_id ~ normal(0, 1);
   sd_id ~ normal(0, 1);
