@@ -26,10 +26,10 @@ data {
 parameters {
   vector[N_ages] z;
   vector[N_ind] z_id;
-  real mu;
   real<lower=0> sd_id;
   real<lower=0> eta;
-  real<lower=0> rho;
+  real<lower=0, upper=1> rho;
+  real mu;
 }
 transformed parameters{
   vector[N_ages] beta;
@@ -54,7 +54,7 @@ transformed parameters{
 model {
   rho ~ normal(3, 3);
   eta ~ exponential(1);
-  mu ~ normal(0, 1);
+  mu ~ normal(0, 0.05);
   z ~ normal(0, 1);
   z_id ~ normal(0, 1);
   sd_id ~ normal(0, 1);

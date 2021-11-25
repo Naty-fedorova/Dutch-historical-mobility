@@ -2,19 +2,18 @@
 # dependencies
 library(rethinking)
 library(rstan)
-library(viridis)
 library(cmdstanr)
 library(parallel)
+library(posterior)
 
+# stan code for models
 m_pois <- cmdstan_model("m_pois.stan")
 m_negbin <- cmdstan_model("m_negbin.stan")
 
 # simulate the person-year table
+n_rp <- 100     # 36,595 in the full analysis dataset
 
-n_rp <- 100
-# 36,595 in the full analysis dataset
-
-birth_years <- sample(1860:1910, n_rp, replace = TRUE)
+birth_years <- sample(1850:1922, n_rp, replace = TRUE)
 
 d <- expand.grid(age = 0:50, person_id = 1:n_rp)
 d$b_y <- birth_years[d$person_id]
@@ -59,14 +58,18 @@ dat_pois <- extract.samples(stansim_pois)
 # outcome has been simulated from our prior:
 d$n_moves <- dat_pois$y_sim[1,]
 
+# can save for future use if need be
+write.csv(d, "d_sim.csv", row.names = FALSE)
+
 ###############
 
 # if you have access to HSN, can otherwise load `s_person_year_df.csv` here
-# d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
+d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 
 # select subset
 set.seed(1)
-n_rp <- 10
+person_ids <- sort(unique(d$person_id))
+n_rp <- 36595
 # N = 36595 in the full sample
 
 rp_sub <- sample(person_ids, size = n_rp)
@@ -83,11 +86,10 @@ dm$age_bin <- dm$age + 1
 # note that this sort of assumes that the *minimum* age is age 0, but is that always true??
 
 # distance matrix for ages
-d_mat <- as.matrix(dist(age_list, upper = TRUE, diag = TRUE))
-
+d_mat <- as.matrix(dist(age_list, upper = TRUE, diag = TRUE)) # note this takes length of age_list, so if ages are not a complete sequence, it will cause problems with indexing
 
 # normalize distance matrix
-#d_mat <- (d_mat - min(d_mat))/(max(d_mat) - min(d_mat)) 
+d_mat <- (d_mat - min(d_mat))/(max(d_mat) - min(d_mat)) 
 
 # data list
 data <- list(N_ages = length(age_list),
@@ -105,13 +107,18 @@ stanfit_pois <- cstan(file = "m_pois.stan",
                       seed = 101,
                       chains = 4, 
                       cores = 60, 
-                      control = list(adapt_delta = 0.8))
+                      iter = 1000,
+                      warmup = 500,
+                      control = list(adapt_delta = 0.8, max_treedepth = 15))
+
+# if needing to save fit
+#saveRDS(stanfit_pois, file = "stanfit_pois.rds")
 
 # extract samples 
 post_pois <- extract.samples(stanfit_pois) 
 
 # save post_pois
-save(post_pois, file = "post_pois.RData")
+#save(post_pois, file = "post_pois.RData")
 
 #-----------------------------------------------------------------------------------------------------------------------
 
@@ -121,38 +128,38 @@ stanfit_negbin <- cstan(file = "m_negbin.stan",
                         data = data, 
                         chains = 4, 
                         cores = 60, 
-                        control = list(adapt_delta = 0.8))
-
-# wow, negbin is *much* slower than poisson, its really surprisng how much
+                        iter = 1000,
+                        seed = 101,
+                        control = list(adapt_delta = 0.8)) # recommended increasing adapt_delta
 
 # extract samples
 post_negbin <- extract.samples(stanfit_negbin) 
 
 # save post_negbin
-save(post_negbin, file = "post_negbin.RData")
+# save(post_negbin, file = "post_negbin.RData")
 
 #-----------------------------------------------------------------------------------------------------------------------
 
 # cohort model
-
 num_cores <- 3
 
-cohorts <- seq(from = 1860, to = 1910, by = 1)
+cohorts <- seq(from = 1850, to = 1922, by = 1)
 
 d_split <- split(d, d$b_y)
 d_split <- d_split[as.character(cohorts)]
 
 m_output_list <- mclapply(d_split, function(dm) {
-
+  
   person_ids <- sort(unique(dm$person_id))
   n_rp <- length(person_ids)
   rp_sub <- sample(person_ids, size = n_rp)
   
   dm$person_id <- match(dm$person_id, person_ids)
-
-  age_list <- sort(unique(dm$age))
   
   dm$age_bin <- dm$age + 1
+  
+  age_list <- sort(unique(dm$age_bin))
+  
   d_mat <- as.matrix(dist(age_list, upper = TRUE, diag = TRUE))
   
   # data list
@@ -171,9 +178,9 @@ m_output_list <- mclapply(d_split, function(dm) {
                       chains = 4, 
                       cores = 4, 
                       control = list(adapt_delta = 0.8))
-
+  
   return(m_pois_coh)
-
+  
 }, mc.cores = num_cores)
 # where `mc.cores` times stan's `chains` will occupy that many cores
 
