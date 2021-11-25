@@ -64,7 +64,7 @@ write.csv(d, "d_sim.csv", row.names = FALSE)
 ###############
 
 # if you have access to HSN, can otherwise load `s_person_year_df.csv` here
-d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
+#d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 
 # select subset
 set.seed(1)
