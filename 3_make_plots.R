@@ -187,7 +187,7 @@ plot(y = 0:(length(beta_mod)-1),
      type = "n")
 axis(1, at = seq(0,100, by = 10))
 axis(2, at = seq(0, 0.5, by = 0.1))
-shade(exp(mu_mod + beta_mod_int), 0:(length(beta_mod)-1), col = vir_int[16]) 
+shade(beta_mod_int, 0:(length(beta_mod)-1), col = vir_int[16]) 
 points(y = mean_moves$average_moves, x = 0:(length(mean_moves$average_moves)-1), col = "grey 41", pch = 19)
 dev.off()
 
