@@ -80,8 +80,11 @@ dm_sim <- subset(d, d$person_id %in% rp_sub)
 dm_sim$person_id <- match(dm_sim$person_id, rp_sub)  
 
 # get coefficients from model posterior 
-beta_mod <- apply(post_pois$beta, 2, mean)
-beta_mod_int <- apply(post_pois$beta, 2, HPDI)
+exp_mu <- sapply( 1:91 , function(i) exp( post_pois$mu + post_pois$beta[,i] ) )
+beta_mod <- apply(exp_mu, 2, mean)
+beta_mod_int <- apply(exp_mu$beta, 2, HPDI)
+
+# edit mark 
 a_mod <- apply(post_pois$a, 2, mean)
 a_mod_int <- apply(post_pois$a, 2, HPDI)
 mu_mod <- mean(post_pois$mu)
