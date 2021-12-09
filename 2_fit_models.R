@@ -184,4 +184,4 @@ m_output_list <- mclapply(d_split, function(dm) {
 }, mc.cores = num_cores)
 # where `mc.cores` times stan's `chains` will occupy that many cores
 
-m_coh_samples <- lapply(m_output_list, extract.samples)
+m_coh_samples <- lapply(m_output_list, extract.samples, pars = c("beta", "a", "mu", "sd_id"))
