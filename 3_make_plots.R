@@ -1,5 +1,3 @@
-# plotting and processing code
-
 # dependencies
 library(rethinking)
 library(viridis)
@@ -15,14 +13,13 @@ d <- read.csv("d_sim.csv", stringsAsFactors = FALSE)
 
 # when working with real data:
 # df used for model
-#d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
+d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 
 # df of birth-death lifecourses
-#s <- read.csv(file = "w_s.csv", stringsAsFactors = FALSE)
+s <- read.csv(file = "w_s.csv", stringsAsFactors = FALSE)
 
 # load in samples if necessary
 # load("post_pois.RData")
-# load("post_negbin.RData")
 
 #-----------------------------------------------------------------------------------------------------------------------
 ### plotting total residential moves over the lifetime (only possible with HSN data)
@@ -69,82 +66,94 @@ abline(v = median(ss_total_moves$total_moves - 1), col = plasma(20)[16], lty = 2
 dev.off()
 
 #-----------------------------------------------------------------------------------------------------------------------
-### Simulating counterfactuals from model
+### Simulating and plotting counterfactual predicted moves |post-stratification|
 
 person_ids <- sort(unique(d$person_id)) 
-n_rp <- 36595  #36595 for full set, note that this overwrites n_rp from 2_fit_models.R
+n_rp <- 36595  #36595 for full set
 rp_sub <- sample(person_ids, size = n_rp)
-
 dm_sim <- subset(d, d$person_id %in% rp_sub)
 
+# re index
 dm_sim$person_id <- match(dm_sim$person_id, rp_sub)  
 
-# get coefficients from model posterior 
-exp_mu <- sapply( 1:91 , function(i) exp( post_pois$mu + post_pois$beta[,i] ) )
-beta_mod <- apply(exp_mu, 2, mean)
-beta_mod_int <- apply(exp_mu$beta, 2, HPDI)
 
-# edit mark 
-a_mod <- apply(post_pois$a, 2, mean)
-a_mod_int <- apply(post_pois$a, 2, HPDI)
-mu_mod <- mean(post_pois$mu)
+n_individuals <- rep(0, 91)
+real_moves <- rep(0, 91)
+est_moves_mean <- rep(0, 91)
+est_moves_hpdi <- matrix(0, 2, 91)
+est_moves_pi_25 <- matrix(0, 2, 91)
+est_moves_pi_50 <- matrix(0, 2, 91)
+est_moves_pi_75 <- matrix(0, 2, 91)
+age_indices <- seq(from = 1, to = 91, by = 1)
 
-dm_sim$mu <- mu_mod
-dm_sim$alpha <- a_mod[dm_sim$person_id]
-dm_sim$beta <- beta_mod[dm_sim$age +1]  # +1 as offset so that beta is indexed correctly
-
-# simulating lambda from model posterior 
-dm_sim$log_lambda <- dm_sim$mu + dm_sim$alpha + dm_sim$beta
-dm_sim$lambda_sim <- exp(dm_sim$log_lambda)
-
-# simulating var number of counterfactual ys from counterfactual lambda
-dm_sim$y_mod <- NA
-dm_sim$y_mod <- as.list(dm_sim$y_mod)
-
-var <- 100
-
-for(i in 1: nrow(dm_sim)){
-  dm_sim$y_mod[i] <- list(rpois(var, dm_sim$lambda_sim[i]))
-}
-
-# summarizing simulated counterfactuals 
-age_mat <- matrix(data = NA, ncol = var + 2, nrow = length(unique(dm_sim$age)))
-age_mat[,1] <- min(dm_sim$age):max(dm_sim$age)
-
-for (i in 1:nrow(age_mat)){
-  age <- age_mat[i,1]
-  age_subset <- dm_sim[which(dm_sim$age == age),]
+pb <- txtProgressBar(min(age_indices), max(age_indices), style=3)
+for(age_i in age_indices) {
   
-  age_mat[i,2] <- sum(age_subset$n_moves)
+  est_moves_sum <- rep(0, 2000)
   
-  for(k in 1:var){
+  dm_individuals_at_age <- dm_sim[which(dm_sim$age == age_i - 1),]
+  
+  if (nrow(dm_individuals_at_age) == 0) next # should never happen on whole dataset
+  
+  # loop through all persons at given age
+  for(ind in 1:nrow(dm_individuals_at_age)) {
     
-    mod_mat <- matrix(data = unlist(age_subset$y_mod), nrow = nrow(age_subset), ncol = var, byrow = TRUE)
+    # Simply counting the number of individuals per age group
+    # to check that it looks reasonable
+    n_individuals[age_i] <- n_individuals[age_i] + 1
     
-    age_mat[i,k + 2] <- sum(mod_mat[,k])
+    # get real moves for individual
+    n_moves <- dm_individuals_at_age[ind, "n_moves"]
+    # add real moves for individual to real_moves[age_i]
+    real_moves[age_i] <- real_moves[age_i] + n_moves
+    
+    # calculate N lambdas
+    person_id <- dm_individuals_at_age[ind, "person_id"]
+    lambdas <- exp(post_pois$mu + rnorm(2000,0,post_pois$sd_id) + post_pois$beta[, age_i])
+    
+    # calculate N est_moves for individual
+    est_moves <- sapply(lambdas, function(i) rpois(1, i) )
+    
+    # Sum est_moves across individuals, keeping the sample dimension
+    est_moves_sum <- est_moves_sum + est_moves # est_moves is for one person, here we sum all people in age group
+    
+    # add mean of est moves
+    est_moves_mean[age_i] <- est_moves_mean[age_i] + mean(est_moves)
   }
+  
+  # calculate HPDI est_moves for individual
+  hpdi <- HPDI(est_moves_sum, prob=0.89) 
+  PI_25 <- PI(est_moves_sum, prob=0.25)
+  PI_50 <- PI(est_moves_sum, prob=0.50)
+  PI_75 <- PI(est_moves_sum, prob=0.75)
+  
+  # add HPDI est_moves for individual to est_moves_hpdi
+  est_moves_hpdi[1, age_i] <- est_moves_hpdi[1, age_i] + hpdi[1]
+  est_moves_hpdi[2, age_i] <- est_moves_hpdi[2, age_i] + hpdi[2]
+  
+  # add PI est moves for individual to est_moves_pi
+  est_moves_pi_25[1, age_i] <- est_moves_pi_25[1, age_i] + PI_25[1]
+  est_moves_pi_25[2, age_i] <- est_moves_pi_25[2, age_i] + PI_25[2]
+  
+  est_moves_pi_50[1, age_i] <- est_moves_pi_50[1, age_i] + PI_50[1]
+  est_moves_pi_50[2, age_i] <- est_moves_pi_50[2, age_i] + PI_50[2]
+  
+  est_moves_pi_75[1, age_i] <- est_moves_pi_75[1, age_i] + PI_75[1]
+  est_moves_pi_75[2, age_i] <- est_moves_pi_75[2, age_i] + PI_75[2]
+  
+  setTxtProgressBar(pb, age_i)
 }
+close(pb)
 
-# remove NAs if there are any, this is useful only if model is run on a subset
-complete.cases(age_mat)
-age_mat <- na.omit(age_mat) 
-
-mod_mean <- apply(age_mat[,3:var+2], 1, mean)
-mod_HPDI <- apply(age_mat[,3:var+2], 1, HPDI)
-
-
-### Plotting counterfactual predicted moves |post-stratification|
-
-# define colors for plotting
+# plotting colors
 vir <- plasma(20)
 vir_int <- plasma(20, alpha = 0.8)
 
-
-png("Figures/moves_ages.png", res = 300, height = 15, width = 20, units = "cm")
-plot(y = age_mat[,2],
-     x = age_mat[,1],
-     ylim = c(0,max(age_mat[,2])), 
-     xlim = c(0,max(age_mat[,1])),
+png("Figures/moves_ages_PI.png", res = 300, height = 15, width = 20, units = "cm")
+plot(y = real_moves,
+     x = age_indices-1,
+     ylim = c(0,max(real_moves)), 
+     xlim = c(0,max(age_indices-1)),
      main = "Total moves per age", 
      xlab = "Age", 
      ylab = "Total number of moves", 
@@ -154,16 +163,20 @@ plot(y = age_mat[,2],
      xaxt = "n", 
      yaxt = "n", 
      font.main = 1)
-shade(mod_HPDI, age_mat[,1], col = vir_int[16])
-lines(age_mat[,1], mod_mean,  col = vir[16])
 axis(1, at = seq(0, 95, by = 10))
-axis(2, at = seq(0, 10000, by = 2000))
+axis(2, at = seq(0, 10000, by = 1000))
+
+shade(est_moves_pi_75, age_indices - 1, col = vir_int[16])
+shade(est_moves_pi_50, age_indices - 1, col = vir_int[15])
+shade(est_moves_pi_25, age_indices - 1, col = vir_int[13])
+
 dev.off()
+
 
 #-----------------------------------------------------------------------------------------------------------------------
 ### plotting beta estimate, implied number of moves per year from model estimates
 
-# reformatting dm_sim to obtain averages from sample
+# reformatting dm_sim to obtain averages from data
 dm_sim %>%
   group_by(age) %>%
   summarize(
@@ -172,11 +185,17 @@ dm_sim %>%
   ) %>%
   as.data.frame(stringsAsFactors = FALSE) -> mean_moves
 
+# processing posterior
+exp_mu <- sapply( 1:91 , function(i) exp( post_pois$mu + post_pois$beta[,i] + rnorm(2000,0,post_pois$sd_id) ) )
+beta_mod_int <- apply(exp_mu, 2, HPDI)
+beta_mod <- apply(exp_mu, 2, mean)
+
+
 # plotting
 png("Figures/beta_estimates.png", res = 300, height = 15, width = 20, units = "cm")
 plot(y = 0:(length(beta_mod)-1),
      x = 0:(length(beta_mod)-1), 
-     ylim = c(0, max(mean_moves$average_moves)),
+     ylim = c(0, max(beta_mod_int)),  
      xlim = c(0,(length(beta_mod)-1)),
      xlab = "Age", 
      ylab = "Estimated number of moves per year", 
@@ -185,12 +204,15 @@ plot(y = 0:(length(beta_mod)-1),
      bty = "n",
      xaxt = "n",
      type = "n")
-axis(1, at = seq(0,100, by = 10))
-axis(2, at = seq(0, 0.5, by = 0.1))
-shade(beta_mod_int, 0:(length(beta_mod)-1), col = vir_int[16]) 
-points(y = mean_moves$average_moves, x = 0:(length(mean_moves$average_moves)-1), col = "grey 41", pch = 19)
-dev.off()
+axis(1, at = seq(0,90, by = 10))
+axis(2, at = seq(0, max(beta_mod_int), by = 0.1))
 
+shade( apply(exp_mu, 2, PI, 0.75 ) , 0:(length(beta_mod)-1), col = vir_int[16])
+shade( apply(exp_mu, 2, PI, 0.5 ) , 0:(length(beta_mod)-1), col = vir_int[15])
+shade( apply(exp_mu, 2, PI, 0.25 ) , 0:(length(beta_mod)-1), col = vir_int[13])
+points(y = mean_moves$average_moves, x = 0:(length(mean_moves$average_moves)-1), col = "grey 80", pch = 19)
+lines(x = 0:(length(beta_mod)-1), y = beta_mod, col = vir[5], lty = 2, lwd = 2 )
+dev.off()
 #-----------------------------------------------------------------------------------------------------------------------
 ### plotting individual trajectories - how RPs acquire moves over their observation periods
 
@@ -243,51 +265,11 @@ text(x = 80, y = 100, "low lifetime moves", adj = 0, cex = 0.5)     # update y c
 text(x = 80, y = 150, "high lifetime moves", adj = 0, cex = 0.5)    # update y coordinate    
 dev.off()
 
-#-----------------------------------------------------------------------------------------------------------------------
-### Plotting alpha estimate, implied moves per year per individual
-
-# average beta per person
-dm_sim %>%
-  group_by(person_id) %>%
-  summarize(
-    beta_mean = mean(beta)
-  ) %>%
-  as.data.frame(stringsAsFactors = FALSE) -> person_beta
-
-beta <- person_beta$beta_mean
-
-a <- t(rbind(a_mod_int, a_mod, beta)) 
-a_o <- a[order(a[,"a_mod"]), ]
-a_int <- t(a_o[,1:2])
-
-# averages per RP
-# reformatting dm_sim to obtain averages from sample
-dm_sim %>%
-  group_by(person_id) %>%
-  summarize(
-    average_moves_rp = mean(n_moves)
-  ) %>%
-  as.data.frame(stringsAsFactors = FALSE) -> mean_moves_rp
-
-
-png("Figures/a_est.png", res = 300, height = 15, width = 20, units = "cm")
-plot(exp(a_o[,"a_mod"] + mu_mod + a_o[, "beta"]),
-     xlab = "RP Index", 
-     ylab = "Estimated number of moves per year", 
-     main = "Individual-based estimated moves per year", 
-     font.main = 1,
-     bty = "n", 
-     ylim = c(0,max(exp(a_int + mu_mod + mean(beta_mod))) + 2),
-     xlim = c(0, 40000), #update to number of n_rp 
-     type = "n")
-shade(exp(a_int + mu_mod + a_o[, "beta"]), 1:length(a_mod), col = vir_int[16])
-points(sort(mean_moves_rp$average_moves_rp), col = "grey41", pch = 20)
-dev.off()
 
 #-----------------------------------------------------------------------------------------------------------------------
 ### plotting cohort model
 
-#cohorts <- seq(from = 1850, to = 1922 , by = 1) # note this rewrite cohorts from 2_fit_models.R
+#cohorts <- seq(from = 1850, to = 1922 , by = 1) # note: rewrites cohorts from 2_fit_modes.R
 
 years_length <- length(cohorts) + ncol(m_coh_samples[[length(cohorts)]][["beta"]])
 coh_label <- seq(from = 1850, to = 1850 + years_length - 1 , by = 1)
@@ -297,7 +279,9 @@ coh_mat <- matrix(data = NA, nrow = 100, ncol = years_length+10)
 
 for(x in 1:length(cohorts)){
   
-  m <- exp(apply(m_coh_samples[[x]][["beta"]], 2, mean) + mean(m_coh_samples[[x]][["mu"]])) 
+  exp_mu_coh <- sapply( 1:ncol(m_coh_samples[[x]][["beta"]]) , function(i) exp( m_coh_samples[[x]][["mu"]] + m_coh_samples[[x]][["beta"]][,i] + rnorm(2000,0,m_coh_samples[[x]][["sd_id"]]) ) )
+  
+  m <- apply(exp_mu_coh, 2, mean)
   
   for(y in 1:length(m)){
     if (x+(y-1) < years_length) {
@@ -311,7 +295,7 @@ coh_mat <- t(coh_mat)
 
 grey <- rgb(0,0,0,alpha=0.2)
 
-# note that observation ends at 1945
+# note that observation ends at 1945 in HSN sample
 
 # cohort heatmap
 png("Figures/heatmap.png", res = 300, height = 20, width = 20, units = "cm")
@@ -330,12 +314,50 @@ abline(v = seq(10, 100, by = 10), col = grey)
 title("Mobility over age and time", font.main = 1)
 
 #legend
-points(x = rep(12, times = 99), y = seq(from = 85, to = 95, length.out = 99), col = plasma(99))
-text(x = 12, y = 82, "low mobility", adj = 0, cex = 0.8)     
-text(x = 12, y = 98, "high mobility", adj = 0, cex = 0.8)  
+points(x = rep(2, times = 99), y = seq(from = 85, to = 95, length.out = 99), col = plasma(99))
+text(x = 2, y = 82, "low mobility", adj = 0, cex = 0.8)     
+text(x = 2, y = 98, "high mobility", adj = 0, cex = 0.8)  
 dev.off()
+
+
+### Supplementary plots
 #-----------------------------------------------------------------------------------------------------------------------
-### plotting pop structure for supplementary
+# individual effects
+
+exp_mu_a <- sapply( 1:36595 , function(i) exp( post$a[,i]  ) )
+a_mod <- apply(exp_mu_a, 2, mean)
+a_mod_int <- apply(exp_mu_a, 2, PI, 0.5)
+
+results <- matrix(0, 3, length(unique(dm_sim$person_id)))
+results[1,] <- a_mod
+results[2,] <- a_mod_int[1,]
+results[3,] <- a_mod_int[2,]
+
+# order by mean
+results <- results[,order(results[1,])]
+
+png("Figures/alphas.png", res = 300, height = 15, width = 20, units = "cm")
+plot(y = 0:(length(a_mod)-1),
+     x = 0:(length(a_mod)-1), 
+     ylim = c(0, max(a_mod_int)),  
+     xlim = c(0,(length(a_mod)-1)),
+     xlab = "RP index", 
+     ylab = "Alpha estimate", 
+     main = "Alpha estimate for each RP", 
+     font.main = 1,
+     bty = "n",
+     xaxt = "n",
+     yaxt = "n",
+     type = "n")
+axis(1, at = seq(0,40000, by = 10000))
+axis(2, at = seq(0, 25, by = 5))
+
+shade(results[c(2,3),] , 0:(length(a_mod)-1), col = vir_int[15])
+lines(results[1,], col = vir[5])
+dev.off()
+
+#-----------------------------------------------------------------------------------------------------------------------
+### sample age structure 
 
 png("Figures/age_representation.png", res = 300, height = 15, width = 20, units = "cm")
 plot(table(d$age),
@@ -352,7 +374,7 @@ axis(1, at = seq(0, 100, by = 10))
 dev.off()
 
 #-----------------------------------------------------------------------------------------------------------------------
-### plotting cohort representation in sample of HSN for supplementary
+### cohort representation in sample of HSN 
 
 d %>%
   group_by(person_id) %>%
@@ -374,30 +396,31 @@ axis(1, at = seq(1840, 1930, 10), labels = seq(1840, 1930, 10))
 dev.off()
 
 #------------------------------------------------------------------------------
+# pois model estimates
 
-# plot for pois model estimates
 png("Figures/model_estimates.png", res = 300, height = 6, width = 8, units = "cm")
 plot(precis(stanfit_pois, pars = c("mu", "rho", "eta"), depth = 2), ylab = "Parameter")
 dev.off()
 
 #------------------------------------------------------------------------------
-# plotting for gamma pois model estimates
+# gamma pois model estimates
+
 png("Figures/negbin_estimates.png", res = 300, height = 6, width = 8, units = "cm")
 plot(precis(stanfit_negbin, pars = c("mu", "rho", "eta", "phi"), depth = 2), ylab = "Parameter") 
 dev.off()
 
+#------------------------------------------------------------------------------
 # gamma pois betas
-beta_mod_neg <- apply(post_negbin$beta, 2, mean)
-beta_mod_int_neg <- apply(post_negbin$beta, 2, HPDI)
-mu_mod_neg <- mean(post_negbin$mu)
 
-vir_int <- plasma(20, alpha = 0.5)
+exp_mu_negbin <- sapply( 1:91 , function(i) exp( post_negbin$mu + post_negbin$beta[,i] + rnorm(2000,0,post_negbin$sd_id) ) )
+beta_mod_int_negbin <- apply(exp_mu_negbin, 2, HPDI)
+beta_mod_negbin <- apply(exp_mu_negbin, 2, mean)
 
-png("Figures/beta_estimate_neg_comp.png", res = 300, height = 15, width = 20, units = "cm")
-plot(y = 0:(length(beta_mod)-1),
-     x = 0:(length(beta_mod)-1), 
-     ylim = c(0, max(mean_moves$average_moves)),
-     xlim = c(0,(length(beta_mod)-1)),
+png("Figures/beta_estimates_neg.png", res = 300, height = 15, width = 20, units = "cm")
+plot(y = 0:(length(beta_mod_negbin)-1),
+     x = 0:(length(beta_mod_negbin)-1), 
+     ylim = c(0, max(beta_mod_int_negbin)),  
+     xlim = c(0,(length(beta_mod_negbin)-1)),
      xlab = "Age", 
      ylab = "Estimated number of moves per year", 
      main = "Age-based estimated moves per year", 
@@ -405,16 +428,19 @@ plot(y = 0:(length(beta_mod)-1),
      bty = "n",
      xaxt = "n",
      type = "n")
-axis(1, at = seq(0,100, by = 10))
-axis(2, at = seq(0, 0.5, by = 0.1))
-shade(exp(mu_mod + beta_mod_int), 0:(length(beta_mod)-1), col = vir_int[16]) 
-shade(exp(mu_mod_neg + beta_mod_int_neg), 0:(length(beta_mod)-1), col = vir_int[1])
-points(y = mean_moves$average_moves, x = 0:(length(mean_moves$average_moves)-1), col = "grey 41", pch = 19)
+axis(1, at = seq(0,90, by = 10))
+axis(2, at = seq(0, max(beta_mod_int_negbin), by = 0.1))
+
+shade( apply(exp_mu_negbin, 2, PI, 0.75 ) , 0:(length(beta_mod_negbin)-1), col = vir_int[16])
+shade( apply(exp_mu_negbin, 2, PI, 0.5 ) , 0:(length(beta_mod_negbin)-1), col = vir_int[15])
+shade( apply(exp_mu_negbin, 2, PI, 0.25 ) , 0:(length(beta_mod_negbin)-1), col = vir_int[13])
+points(y = mean_moves$average_moves, x = 0:(length(mean_moves$average_moves)-1), col = "grey 80", pch = 19)
+lines(x = 0:(length(beta_mod_negbin)-1), y = beta_mod_negbin, col = vir[5], lty = 2, lwd = 2 )
+
 dev.off()
 
-#------------------------------------------------------------------------------
-
-# plot of Rhat values against effective samples
+#-----------------------------------------------------------------------------------------------------------------------
+# Rhat values against effective samples
 
 png("Figures/rhat_neff.png", res = 300, height = 15, width = 20, units = "cm")
 dashboard(stanfit_pois)
