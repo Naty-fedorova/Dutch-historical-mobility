@@ -69,7 +69,7 @@ write.csv(d, "d_sim.csv", row.names = FALSE)
 # select subset
 set.seed(1)
 person_ids <- sort(unique(d$person_id))
-n_rp <- 36595
+n_rp <- 100  #36595
 # N = 36595 in the full sample
 
 rp_sub <- sample(person_ids, size = n_rp)

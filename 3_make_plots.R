@@ -13,10 +13,10 @@ d <- read.csv("d_sim.csv", stringsAsFactors = FALSE)
 
 # when working with real data:
 # df used for model
-d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
+#d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 
 # df of birth-death lifecourses
-s <- read.csv(file = "w_s.csv", stringsAsFactors = FALSE)
+#s <- read.csv(file = "w_s.csv", stringsAsFactors = FALSE)
 
 # load in samples if necessary
 # load("post_pois.RData")
@@ -25,66 +25,67 @@ s <- read.csv(file = "w_s.csv", stringsAsFactors = FALSE)
 ### plotting total residential moves over the lifetime (only possible with HSN data)
 
 # check first reg address is at age 0
-expect_true(nrow(s[which((s$mun_move_category == "first") & (s$age_at_move != 0)),]) == 0)   # first reg address is always at age 0
-
-ss <- s[which((s$death_y - s$birth_y) >= 20),]
-
-ss %>%
-  group_by(person_id) %>%
-  summarize(
-    total_moves = length(nmove)
-  ) %>%
-  as.data.frame(stringsAsFactors = FALSE) -> ss_total_moves
-
-table(ss_total_moves$total_moves) # this shows us the number of registered addresses logged per person
-
-dist <- table(ss_total_moves$total_moves - 1) # this shows us the number of moves, as for the individuals with just one registered address, they are now logged as having zero moves
-
-# for range and IQR
-summary(dist)
-
-# percent of individuals that have more than 30 moves
-sum(dist[31:82])/sum(dist)*100
-
-# plotting total moves over lifetime
-png("Figures/hist_s_total_moves.png", res = 300, height = 15, width = 20, units = "cm")
-# plot with -1 to correct nmove from listing order of registration to representing moves
-plot(table(ss_total_moves$total_moves -1),
-     main = "Total number of moves recorded over lifetime",
-     xlab = "Lifetime number of moves",
-     ylab = "Number of RPs",
-     xlim = c(0,131),
-     xaxt = "n",
-     ylim = c(0,250),
-     yaxt = "n",
-     bty = "n",
-     col = "grey41",
-     font.main = 1)
-axis(1, at = seq(0, 200, by = 10))
-axis(2, at = seq(0, 2500, by = 50))
-abline(v = median(ss_total_moves$total_moves - 1), col = plasma(20)[16], lty = 2, lwd = 2)
-dev.off()
+# expect_true(nrow(s[which((s$mun_move_category == "first") & (s$age_at_move != 0)),]) == 0)   # first reg address is always at age 0
+# 
+# ss <- s[which((s$death_y - s$birth_y) >= 20),]
+# 
+# ss %>%
+#   group_by(person_id) %>%
+#   summarize(
+#     total_moves = length(nmove)
+#   ) %>%
+#   as.data.frame(stringsAsFactors = FALSE) -> ss_total_moves
+# 
+# table(ss_total_moves$total_moves) # this shows us the number of registered addresses logged per person
+# 
+# dist <- table(ss_total_moves$total_moves - 1) # this shows us the number of moves, as for the individuals with just one registered address, they are now logged as having zero moves
+# 
+# # for range and IQR
+# summary(dist)
+# 
+# # percent of individuals that have more than 30 moves
+# sum(dist[31:82])/sum(dist)*100
+# 
+# # plotting total moves over lifetime
+# png("Figures/hist_s_total_moves.png", res = 300, height = 15, width = 20, units = "cm")
+# # plot with -1 to correct nmove from listing order of registration to representing moves
+# plot(table(ss_total_moves$total_moves -1),
+#      main = "Total number of moves recorded over lifetime",
+#      xlab = "Lifetime number of moves",
+#      ylab = "Number of RPs",
+#      xlim = c(0,131),
+#      xaxt = "n",
+#      ylim = c(0,250),
+#      yaxt = "n",
+#      bty = "n",
+#      col = "grey41",
+#      font.main = 1)
+# axis(1, at = seq(0, 200, by = 10))
+# axis(2, at = seq(0, 2500, by = 50))
+# abline(v = median(ss_total_moves$total_moves - 1), col = plasma(20)[16], lty = 2, lwd = 2)
+# dev.off()
 
 #-----------------------------------------------------------------------------------------------------------------------
-### Simulating and plotting counterfactual predicted moves |post-stratification|
+### Simulating and plotting predicted moves |post-stratification|
 
 person_ids <- sort(unique(d$person_id)) 
-n_rp <- 36595  #36595 for full set
+n_rp <- 100 #36595  #36595 for full set
 rp_sub <- sample(person_ids, size = n_rp)
 dm_sim <- subset(d, d$person_id %in% rp_sub)
 
 # re index
 dm_sim$person_id <- match(dm_sim$person_id, rp_sub)  
 
+uniq_ages <- length(unique(dm_sim$age))
 
-n_individuals <- rep(0, 91)
-real_moves <- rep(0, 91)
-est_moves_mean <- rep(0, 91)
-est_moves_hpdi <- matrix(0, 2, 91)
-est_moves_pi_25 <- matrix(0, 2, 91)
-est_moves_pi_50 <- matrix(0, 2, 91)
-est_moves_pi_75 <- matrix(0, 2, 91)
-age_indices <- seq(from = 1, to = 91, by = 1)
+n_individuals <- rep(0, uniq_ages)
+real_moves <- rep(0, uniq_ages)
+est_moves_mean <- rep(0, uniq_ages)
+est_moves_hpdi <- matrix(0, 2, uniq_ages)
+est_moves_pi_25 <- matrix(0, 2, uniq_ages)
+est_moves_pi_50 <- matrix(0, 2, uniq_ages)
+est_moves_pi_75 <- matrix(0, 2, uniq_ages)
+age_indices <- seq(from = 1, to = uniq_ages, by = 1)
 
 pb <- txtProgressBar(min(age_indices), max(age_indices), style=3)
 for(age_i in age_indices) {
@@ -186,7 +187,7 @@ dm_sim %>%
   as.data.frame(stringsAsFactors = FALSE) -> mean_moves
 
 # processing posterior
-exp_mu <- sapply( 1:91 , function(i) exp( post_pois$mu + post_pois$beta[,i] + rnorm(2000,0,post_pois$sd_id) ) )
+exp_mu <- sapply( 1:uniq_ages , function(i) exp( post_pois$mu + post_pois$beta[,i] + rnorm(2000,0,post_pois$sd_id) ) )
 beta_mod_int <- apply(exp_mu, 2, HPDI)
 beta_mod <- apply(exp_mu, 2, mean)
 
@@ -233,10 +234,15 @@ dm_sim %>%
   ungroup() %>%
   as.data.frame(stringsAsFactors = FALSE) -> dm_sim_cumsum
 
-dm_sim_person$moves <- as.factor(dm_sim_person$moves)
-plot_cols <- plasma(max(dm_sim_cumsum$moves_cumsum), alpha = 0.5)
-color_real <- plot_cols[dm_sim_person$moves]
-dm_sim_person$col_real <- color_real
+plot_cols <- plasma(max(dm_sim_cumsum$moves_cumsum) + 1, alpha = 0.5)
+
+for(i in 1:nrow(dm_sim_person)){
+  moves <- dm_sim_person$moves[i]
+  dm_sim_person$col_real[i] <- plot_cols[moves + 1]
+}
+
+# removing hard-to-see-yellow from plot
+#dm_sim_person[dm_sim_person$col_real == "#F0F92180", "col_real"] <- "#F0F62580"
 
 # Plot move accumulation
 png("Figures/trajectories_nmoves.png", res = 300, height = 14, width = 14, units = "cm")
@@ -324,7 +330,7 @@ dev.off()
 #-----------------------------------------------------------------------------------------------------------------------
 # individual effects
 
-exp_mu_a <- sapply( 1:36595 , function(i) exp( post$a[,i]  ) )
+exp_mu_a <- sapply( 1:36595 , function(i) exp( post_pois$a[,i]  ) )
 a_mod <- apply(exp_mu_a, 2, mean)
 a_mod_int <- apply(exp_mu_a, 2, PI, 0.5)
 
@@ -359,41 +365,41 @@ dev.off()
 #-----------------------------------------------------------------------------------------------------------------------
 ### sample age structure 
 
-png("Figures/age_representation.png", res = 300, height = 15, width = 20, units = "cm")
-plot(table(d$age),
-     main = "Representation of ages", 
-     xlab = "Age", 
-     ylab = "Number of observations", 
-     xlim = c(0,100),
-     xaxt = "n",
-     ylim = c(0,40000), 
-     bty = "n", 
-     col = "grey41",
-     font.main = 1)
-axis(1, at = seq(0, 100, by = 10))
-dev.off()
+# png("Figures/age_representation.png", res = 300, height = 15, width = 20, units = "cm")
+# plot(table(d$age),
+#      main = "Representation of ages", 
+#      xlab = "Age", 
+#      ylab = "Number of observations", 
+#      xlim = c(0,100),
+#      xaxt = "n",
+#      ylim = c(0,40000), 
+#      bty = "n", 
+#      col = "grey41",
+#      font.main = 1)
+# axis(1, at = seq(0, 100, by = 10))
+# dev.off()
 
 #-----------------------------------------------------------------------------------------------------------------------
-### cohort representation in sample of HSN 
+### sample cohort representation 
 
-d %>%
-  group_by(person_id) %>%
-  summarise(b_y = first(b_y)) %>%
-  as.data.frame(stringsAsFactors = FALSE) -> cohorts
-
-png("Figures/birth_year_rep.png", res = 300, height = 15, width = 20, units = "cm")
-plot(table(cohorts$b_y), 
-     main = "Birth year representation in the HSN",
-     font.main = 1,
-     ylim = c(0,max(table(cohorts$b_y))),
-     xlim = c(1830,1940),
-     xaxt = "n",
-     xlab = "Year",
-     ylab = "Number of RPs",
-     col = "grey41",
-     bty = "n")
-axis(1, at = seq(1840, 1930, 10), labels = seq(1840, 1930, 10))
-dev.off()
+# d %>%
+#   group_by(person_id) %>%
+#   summarise(b_y = first(b_y)) %>%
+#   as.data.frame(stringsAsFactors = FALSE) -> cohorts
+# 
+# png("Figures/birth_year_rep.png", res = 300, height = 15, width = 20, units = "cm")
+# plot(table(cohorts$b_y), 
+#      main = "Birth year representation in the HSN",
+#      font.main = 1,
+#      ylim = c(0,max(table(cohorts$b_y))),
+#      xlim = c(1830,1940),
+#      xaxt = "n",
+#      xlab = "Year",
+#      ylab = "Number of RPs",
+#      col = "grey41",
+#      bty = "n")
+# axis(1, at = seq(1840, 1930, 10), labels = seq(1840, 1930, 10))
+# dev.off()
 
 #------------------------------------------------------------------------------
 # pois model estimates
