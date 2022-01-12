@@ -29,7 +29,7 @@ In R, set the working directory to that containing this readme file. For example
 
 if the folder containing the project is named 'Dutch-historical-mobility' and on your Desktop. You can tell if you are in the right place by typing in `dir()` and seeing this readme.md file.
 
-The analysis takes input from the Historical Sample of the Netherlands (https://iisg.amsterdam/en/hsn) through the `1_prep_hsn_data.R` file. However, the default run assumes you need to simulate strucuturally comparable data.
+The analysis takes input from the Historical Sample of the Netherlands (https://iisg.amsterdam/en/hsn) through the `1_prep_hsn_data.R` file. However, the default run assumes you need to simulate structurally comparable data.
 
 Run sequence:
 - run 2_fit_models.R, this simulates data and runs the poisson regression, beta-gamma regression, and cohort regressions 
