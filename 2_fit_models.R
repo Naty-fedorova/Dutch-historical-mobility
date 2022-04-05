@@ -15,6 +15,7 @@ n_rp <- 100     # 36,595 in the full analysis dataset
 
 birth_years <- sample(1850:1922, n_rp, replace = TRUE)
 
+# TODO: add sex to simulated data
 d <- expand.grid(age = 0:50, person_id = 1:n_rp)
 d$b_y <- birth_years[d$person_id]
 d$address_start_y <- birth_years[d$person_id] + d$age
@@ -69,7 +70,7 @@ write.csv(d, "d_sim.csv", row.names = FALSE)
 # select subset
 set.seed(1)
 person_ids <- sort(unique(d$person_id))
-n_rp <- 100  #36595
+n_rp <- 1000  #36595
 # N = 36595 in the full sample
 
 rp_sub <- sample(person_ids, size = n_rp)
@@ -97,6 +98,7 @@ data <- list(N_ages = length(age_list),
              N = nrow(dm), 
              y = dm$n_moves,
              age = dm$age_bin,
+             sex = dm$sex,  # female = 1, male = 2
              person_id = dm$person_id,
              d_mat = d_mat,
              run_estimation = 1)

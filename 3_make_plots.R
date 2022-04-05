@@ -13,10 +13,10 @@ d <- read.csv("d_sim.csv", stringsAsFactors = FALSE)
 
 # when working with real data:
 # df used for model
-#d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
+d <- read.csv("s_person_year_df.csv", stringsAsFactors = FALSE)
 
 # df of birth-death lifecourses
-#s <- read.csv(file = "w_s.csv", stringsAsFactors = FALSE)
+s <- read.csv(file = "w_s.csv", stringsAsFactors = FALSE)
 
 # load in samples if necessary
 # load("post_pois.RData")
@@ -24,46 +24,53 @@ d <- read.csv("d_sim.csv", stringsAsFactors = FALSE)
 #-----------------------------------------------------------------------------------------------------------------------
 ### plotting total residential moves over the lifetime (only possible with HSN data)
 
-# check first reg address is at age 0
-# expect_true(nrow(s[which((s$mun_move_category == "first") & (s$age_at_move != 0)),]) == 0)   # first reg address is always at age 0
-# 
-# ss <- s[which((s$death_y - s$birth_y) >= 20),]
-# 
-# ss %>%
-#   group_by(person_id) %>%
-#   summarize(
-#     total_moves = length(nmove)
-#   ) %>%
-#   as.data.frame(stringsAsFactors = FALSE) -> ss_total_moves
-# 
-# table(ss_total_moves$total_moves) # this shows us the number of registered addresses logged per person
-# 
-# dist <- table(ss_total_moves$total_moves - 1) # this shows us the number of moves, as for the individuals with just one registered address, they are now logged as having zero moves
-# 
-# # for range and IQR
-# summary(dist)
-# 
-# # percent of individuals that have more than 30 moves
-# sum(dist[31:82])/sum(dist)*100
-# 
-# # plotting total moves over lifetime
-# png("Figures/hist_s_total_moves.png", res = 300, height = 15, width = 20, units = "cm")
-# # plot with -1 to correct nmove from listing order of registration to representing moves
-# plot(table(ss_total_moves$total_moves -1),
-#      main = "Total number of moves recorded over lifetime",
-#      xlab = "Lifetime number of moves",
-#      ylab = "Number of RPs",
-#      xlim = c(0,131),
-#      xaxt = "n",
-#      ylim = c(0,250),
-#      yaxt = "n",
-#      bty = "n",
-#      col = "grey41",
-#      font.main = 1)
-# axis(1, at = seq(0, 200, by = 10))
-# axis(2, at = seq(0, 2500, by = 50))
-# abline(v = median(ss_total_moves$total_moves - 1), col = plasma(20)[16], lty = 2, lwd = 2)
-# dev.off()
+#check first reg address is at age 0
+expect_true(nrow(s[which((s$mun_move_category == "first") & (s$age_at_move != 0)),]) == 0)   # first reg address is always at age 0
+
+ss <- s[which((s$death_y - s$birth_y) >= 20),]
+
+ss %>%
+  mutate(sex = recode(sex,v = 1, m = 2)) %>%
+  group_by(person_id) %>%
+  summarize(
+    total_moves = length(nmove),
+    sex = sex
+  ) %>%
+  as.data.frame(stringsAsFactors = FALSE) -> ss_total_moves
+
+table(ss_total_moves$total_moves) # this shows us the number of registered addresses logged per person
+
+dist <- table(ss_total_moves$total_moves - 1) # this shows us the number of moves, as for the individuals with just one registered address, they are now logged as having zero moves
+
+# for range and IQR
+summary(dist)
+
+# percent of individuals that have more than 30 moves
+sum(dist[31:82])/sum(dist)*100
+
+temp <- table(ss_total_moves$sex, (ss_total_moves$total_moves - 1))
+temp <- as.data.frame.matrix(temp)  # TODO: need to do -1 here
+
+
+
+# plotting total moves over lifetime
+png("Figures/hist_s_total_moves.png", res = 300, height = 15, width = 20, units = "cm")
+# plot with -1 to correct nmove from listing order of registration to representing moves
+plot(
+     main = "Total number of moves recorded over lifetime",
+     xlab = "Lifetime number of moves",
+     ylab = "Number of RPs",
+     xlim = c(0,131),
+     xaxt = "n",
+     ylim = c(0,250),
+     yaxt = "n",
+     bty = "n",
+     col = "grey41",
+     font.main = 1)
+axis(1, at = seq(0, 200, by = 10))
+axis(2, at = seq(0, 2500, by = 50))
+abline(v = median(ss_total_moves$total_moves - 1), col = plasma(20)[16], lty = 2, lwd = 2)
+dev.off()
 
 #-----------------------------------------------------------------------------------------------------------------------
 ### Simulating and plotting predicted moves |post-stratification|
@@ -148,7 +155,7 @@ close(pb)
 
 # plotting colors
 vir <- plasma(20)
-vir_int <- plasma(20, alpha = 0.8)
+vir_int <- plasma(20, alpha = 0.3)
 
 png("Figures/moves_ages_PI.png", res = 300, height = 15, width = 20, units = "cm")
 plot(y = real_moves,
@@ -187,33 +194,85 @@ dm_sim %>%
   as.data.frame(stringsAsFactors = FALSE) -> mean_moves
 
 # processing posterior
-exp_mu <- sapply( 1:uniq_ages , function(i) exp( post_pois$mu + post_pois$beta[,i] + rnorm(2000,0,post_pois$sd_id) ) )
-beta_mod_int <- apply(exp_mu, 2, HPDI)
-beta_mod <- apply(exp_mu, 2, mean)
+exp_mu_f <- sapply( 1:uniq_ages , function(i) exp( post_pois$mu + post_pois$beta[, 1,i] + rnorm(2000,0,post_pois$sd_id) ) )
+exp_mu_m <- sapply( 1:uniq_ages , function(i) exp( post_pois$mu + post_pois$beta[, 2,i] + rnorm(2000,0,post_pois$sd_id) ) )
+
+beta_mod_int_f <- apply(exp_mu_f, 2, HPDI)
+beta_mod_int_m <- apply(exp_mu_m, 2, HPDI)
+
+beta_mod_f <- apply(exp_mu_f, 2, mean)
+beta_mod_m <- apply(exp_mu_m, 2, mean)
 
 
 # plotting
-png("Figures/beta_estimates.png", res = 300, height = 15, width = 20, units = "cm")
-plot(y = 0:(length(beta_mod)-1),
-     x = 0:(length(beta_mod)-1), 
-     ylim = c(0, max(beta_mod_int)),  
-     xlim = c(0,(length(beta_mod)-1)),
+png("Figures/beta_estimates_sex.png", res = 300, height = 15, width = 20, units = "cm")
+plot(y = 0:(length(beta_mod_f)-1),
+     x = 0:(length(beta_mod_f)-1), 
+     ylim = c(0, max(beta_mod_int_f)),  
+     xlim = c(0,(length(beta_mod_f)-1)),
      xlab = "Age", 
      ylab = "Estimated number of moves per year", 
-     main = "Age-based estimated moves per year", 
+     main = "Age-based estimated moves per year for each sex", 
      font.main = 1,
      bty = "n",
      xaxt = "n",
      type = "n")
 axis(1, at = seq(0,90, by = 10))
-axis(2, at = seq(0, max(beta_mod_int), by = 0.1))
+axis(2, at = seq(0, max(beta_mod_int_f), by = 0.1))
 
-shade( apply(exp_mu, 2, PI, 0.75 ) , 0:(length(beta_mod)-1), col = vir_int[16])
-shade( apply(exp_mu, 2, PI, 0.5 ) , 0:(length(beta_mod)-1), col = vir_int[15])
-shade( apply(exp_mu, 2, PI, 0.25 ) , 0:(length(beta_mod)-1), col = vir_int[13])
-points(y = mean_moves$average_moves, x = 0:(length(mean_moves$average_moves)-1), col = "grey 80", pch = 19)
-lines(x = 0:(length(beta_mod)-1), y = beta_mod, col = vir[5], lty = 2, lwd = 2 )
+#shade( apply(exp_mu_f, 2, PI, 0.75 ) , 0:(length(beta_mod_f)-1), col = vir_int[4])
+shade( apply(exp_mu_f, 2, PI, 0.5 ) , 0:(length(beta_mod_f)-1), col = vir_int[4])
+#shade( apply(exp_mu_f, 2, PI, 0.25 ) , 0:(length(beta_mod_f)-1), col = vir_int[4])
+
+#shade( apply(exp_mu_m, 2, PI, 0.75 ) , 0:(length(beta_mod_m)-1), col = vir_int[10])
+shade( apply(exp_mu_m, 2, PI, 0.5 ) , 0:(length(beta_mod_m)-1), col = vir_int[10])
+#shade( apply(exp_mu_m, 2, PI, 0.25 ) , 0:(length(beta_mod_m)-1), col = vir_int[10])
+
+#points(y = mean_moves$average_moves, x = 0:(length(mean_moves$average_moves)-1), col = "grey 80", pch = 19)
+lines(x = 0:(length(beta_mod_f)-1), y = beta_mod_f, col = vir[4], lty = 2, lwd = 2 )
+lines(x = 0:(length(beta_mod_m)-1), y = beta_mod_m, col = vir[10], lty = 2, lwd = 2 )
+
+legend(x = 60, y = 0.8, legend = c("female", "male"), lty = 1, col = c(vir[4], vir[10]), cex = 0.5)
+
 dev.off()
+
+#-----------------------------------------------------------------------------------------------------------------------
+### plotting contrasts between the sexes
+
+beta_con <- beta_mod_f - beta_mod_m
+beta_int_con <- beta_mod_int_f - beta_mod_int_m
+
+exp_mu_con <- exp_mu_f - exp_mu_m
+
+png("Figures/beta_contrast.png", res = 300, height = 15, width = 20, units = "cm")
+plot(y = 0:(length(beta_mod_f)-1),
+     x = 0:(length(beta_mod_f)-1), 
+     ylim = c(-0.3, 0.3),  
+     xlim = c(0,(length(beta_mod_f)-1)),
+     xlab = "Age", 
+     ylab = "Difference in estimated number of moves per year", 
+     main = "Sex-based contrast between mobility over ages", 
+     font.main = 1,
+     bty = "n",
+     xaxt = "n",
+     yaxt = "n",
+     type = "n")
+axis(1, at = seq(0,90, by = 10))
+axis(2, at = seq(-0.3, 0.3, by = 0.1), labels = c("-0.3", "-0.2", "-0.1", "0","0.1", "0.2", "0.3" ))
+
+shade( apply(exp_mu_con, 2, PI, 0.5 ) , 0:(length(beta_mod_m)-1), col = vir_int[10])
+lines(x = 0:(length(beta_con)-1), y = beta_con, col = vir[15], lty = 1, lwd = 3 )
+
+# line for zero
+lines(x = 0:(length(beta_con)-1), y = rep(0, (length(beta_con))), col = "grey", lty = 2)
+
+dev.off()
+
+
+
+
+
+
 #-----------------------------------------------------------------------------------------------------------------------
 ### plotting individual trajectories - how RPs acquire moves over their observation periods
 

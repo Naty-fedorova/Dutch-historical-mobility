@@ -353,13 +353,13 @@ expect_true(nrow(df) == 309051)
 expect_true(sum(is.na(df$obsr_end_y)) == 0)
 
 df %>%
-  mutate(sex = recode(sex,v = 1, m = 2)) %>%  
   group_by(person_id, address_start_y) %>%
   summarize(
     n_moves = n(),
     age = mean(age_at_move),
     b_y = first(birth_y),
-    obs_end = first(obsr_end_y)
+    obs_end = first(obsr_end_y),
+    sex = first(sex)
   ) %>%
   complete(
     address_start_y = seq(min(address_start_y), max(obs_end), by = 1),    
@@ -368,7 +368,13 @@ df %>%
   mutate(age=age[1] + 1*(0:(length(age)-1))) %>%
   fill(b_y) %>%
   fill(obs_end) %>%
+  fill(sex) %>%
   as.data.frame(stringsAsFactors = FALSE) -> s_person_year
+
+s_person_year %>%
+  mutate(sex = recode(sex,v = 1, m = 2)) %>%
+  as.data.frame(stringsAsFactors = FALSE) -> s_person_year
+  
 
 
 # remove first address if age is 0 (i.e. first reg at birth) to turn table from reg events to move events
