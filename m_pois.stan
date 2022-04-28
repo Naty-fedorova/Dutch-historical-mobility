@@ -19,7 +19,7 @@ data {
   int N;
   int y[N];
   int age[N];
-  int sex[N];                               // NEW input
+  int gender[N];                               // NEW input
   int person_id[N];
   matrix[N_ages, N_ages] d_mat;
   int<lower=0, upper=1> run_estimation;
@@ -28,12 +28,12 @@ parameters {
   array[2] vector[N_ages] z;
   vector[N_ind] z_id;
   real<lower=0> sd_id;
-  array[2] real<lower=0> eta;               // eta for each sex
-  array[2] real<lower=0> rho;               // rho for each sex
+  array[2] real<lower=0> eta;               // eta for each gender
+  array[2] real<lower=0> rho;               // rho for each gender
   real mu;
 }
 transformed parameters{
-  array[2] vector[N_ages] beta;             // beta vector for each sex
+  array[2] vector[N_ages] beta;             // beta vector for each gender
   vector[N] lambda;
   vector[N_ind] a;
   {
@@ -51,7 +51,7 @@ transformed parameters{
     // Compute lambda
     for (i in 1:N) {
                                          // access correct beta vector
-      lambda[i] = mu + a[person_id[i]] + beta[sex[i],age[i]];
+      lambda[i] = mu + a[person_id[i]] + beta[gender[i],age[i]];
       //lambda[i] = mu + beta[age[i]];
     }
   }

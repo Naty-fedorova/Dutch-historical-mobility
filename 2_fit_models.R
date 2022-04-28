@@ -11,19 +11,21 @@ m_pois <- cmdstan_model("m_pois.stan")
 m_negbin <- cmdstan_model("m_negbin.stan")
 
 # simulate the person-year table
-n_rp <- 100     # 36,595 in the full analysis dataset
+n_rp <- 36595     # 36,595 in the full analysis dataset
 
 birth_years <- sample(1850:1922, n_rp, replace = TRUE)
 
-# TODO: add sex to simulated data
+genders <- sample(c(1:2), n_rp, prob = c(0.5, 0.5), replace = TRUE)
+
+
 d <- expand.grid(age = 0:50, person_id = 1:n_rp)
 d$b_y <- birth_years[d$person_id]
 d$address_start_y <- birth_years[d$person_id] + d$age
 d$obs_end <- 60 + birth_years[d$person_id]
+d$gender <- genders[d$person_id]
 d$n_moves <- (-999) # this is what we want to sim!
 
 person_ids <- sort(unique(d$person_id))
-
 
 age_list <- sort(unique(d$age))
 
@@ -39,6 +41,7 @@ data <- list(N_ages = length(age_list),
              N = nrow(d), 
              y = d$n_moves, # dummy values, because we want to simulate this
              age = d$age_bin,
+             gender = d$gender,  # female = 1, male = 2
              person_id = d$person_id,
              d_mat = d_mat,
              run_estimation = 0)
@@ -70,8 +73,8 @@ write.csv(d, "d_sim.csv", row.names = FALSE)
 # select subset
 set.seed(1)
 person_ids <- sort(unique(d$person_id))
-n_rp <- 1000  #36595
-# N = 36595 in the full sample
+n_rp <- 36595
+# N is 36595 in the full sample
 
 rp_sub <- sample(person_ids, size = n_rp)
 
@@ -98,7 +101,7 @@ data <- list(N_ages = length(age_list),
              N = nrow(dm), 
              y = dm$n_moves,
              age = dm$age_bin,
-             sex = dm$sex,  # female = 1, male = 2
+             gender = dm$gender,  # female = 1, male = 2
              person_id = dm$person_id,
              d_mat = d_mat,
              run_estimation = 1)
@@ -114,13 +117,13 @@ stanfit_pois <- cstan(file = "m_pois.stan",
                       control = list(adapt_delta = 0.8, max_treedepth = 15))
 
 # if needing to save fit
-#saveRDS(stanfit_pois, file = "stanfit_pois.rds")
+saveRDS(stanfit_pois, file = "stanfit_pois.rds")
 
 # extract samples 
 post_pois <- extract.samples(stanfit_pois) 
 
 # save post_pois
-#save(post_pois, file = "post_pois.RData")
+save(post_pois, file = "post_pois.RData")
 
 #-----------------------------------------------------------------------------------------------------------------------
 
@@ -132,7 +135,7 @@ stanfit_negbin <- cstan(file = "m_negbin.stan",
                         cores = 60, 
                         iter = 1000,
                         seed = 101,
-                        control = list(adapt_delta = 0.8)) # recommended increasing adapt_delta
+                        control = list(adapt_delta = 0.8, max_treedepth = 15)) # recommended increasing adapt_delta
 
 # extract samples
 post_negbin <- extract.samples(stanfit_negbin) 
@@ -143,7 +146,7 @@ post_negbin <- extract.samples(stanfit_negbin)
 #-----------------------------------------------------------------------------------------------------------------------
 
 # cohort model
-num_cores <- 3
+num_cores <- 20
 
 cohorts <- seq(from = 1850, to = 1922, by = 1)
 
@@ -170,6 +173,7 @@ m_output_list <- mclapply(d_split, function(dm) {
                N = nrow(dm), 
                y = dm$n_moves,
                age = dm$age_bin,
+               gender = dm$gender,  # female = 1, male = 2
                person_id = dm$person_id,
                d_mat = d_mat,
                run_estimation = 1)

@@ -359,7 +359,7 @@ df %>%
     age = mean(age_at_move),
     b_y = first(birth_y),
     obs_end = first(obsr_end_y),
-    sex = first(sex)
+    gender = first(sex)
   ) %>%
   complete(
     address_start_y = seq(min(address_start_y), max(obs_end), by = 1),    
@@ -368,11 +368,11 @@ df %>%
   mutate(age=age[1] + 1*(0:(length(age)-1))) %>%
   fill(b_y) %>%
   fill(obs_end) %>%
-  fill(sex) %>%
+  fill(gender) %>%
   as.data.frame(stringsAsFactors = FALSE) -> s_person_year
 
 s_person_year %>%
-  mutate(sex = recode(sex,v = 1, m = 2)) %>%
+  mutate(gender = recode(gender,v = 1, m = 2)) %>%
   as.data.frame(stringsAsFactors = FALSE) -> s_person_year
   
 
@@ -388,3 +388,42 @@ expect_true(length(unique(s_person_year$person_id)) == length(unique(df$person_i
 
 # save person year table for use in model
 write.csv(s_person_year, "s_person_year_df.csv", row.names = FALSE)
+
+
+## creating a pure lifecourse set
+
+w_df <- read.csv(file = "w_df.csv", stringsAsFactors = FALSE)
+
+# remove RPs whose first registered address does not match the year of birth
+
+s <- w_df[which((w_df$nmove == 1) & (w_df$address_start_y == w_df$birth_y)), ] 
+s <- subset(w_df, w_df$person_id %in% s$person_id)
+
+expect_true(nrow(s) == 285286)
+expect_true(length(unique(s$person_id)) == 33820)
+
+# s now contains the registration events for length(unique(s$person_id)) RPS, who are tracked from the birth year onwards
+
+# because many death years are missing and there is a lot of variation between individuals with death years and without them, we consider only individuals with both birth and death years here
+
+# rps with death year
+temp_s <- subset(s, s$death_y != "NA")
+
+# rps without death y 
+temp_ss <- s[is.na(s$death_y),]
+
+# compare distribution of death and obsvr end years
+par(mfrow=c(2,1), mar = c(4, 4, 2, 2) )
+
+plot(table(temp_s$death_y - temp_s$birth_y), ylab = "death y present")  # note! 33 cases where death year is before birth year - these will need to be removed
+plot(table(temp_ss$obsr_end_y - temp_ss$birth_y), ylab = "death y missing")
+
+# remove rps without death year
+s <- s[which(!is.na(s$death_y)),]
+
+expect_true(sum(is.na(s$death_y)) == 0)
+
+# save s, the lifecourse set 
+write.csv(s, "w_s.csv")
+
+
